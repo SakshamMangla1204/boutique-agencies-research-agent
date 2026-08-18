@@ -121,3 +121,57 @@ def update_company_row(row_number, data):
     ensure_headers()
     worksheet.update(f"A{row_number}:K{row_number}", [build_row(data)])
 
+
+def _column_index(headers_row, field_name: str) -> int:
+    normalized = field_name.strip().lower()
+
+    for index, header in enumerate(headers_row):
+        if header.strip().lower() == normalized:
+            return index
+
+    return 0
+
+
+def ensure_research_headers(headers: list[str]):
+    worksheet = get_sheet()
+    first_row = worksheet.row_values(1)
+
+    if not first_row:
+        worksheet.append_row(headers)
+
+
+def build_dynamic_row(headers: list[str], data: dict):
+    return [str(data.get(header, "") or "") for header in headers]
+
+
+def get_existing_entity_names(name_field: str = "company_name") -> set[str]:
+    worksheet = get_sheet()
+    rows = worksheet.get_all_values()
+
+    if not rows:
+        return set()
+
+    headers = rows[0]
+    name_index = _column_index(headers, name_field)
+
+    return {
+        row[name_index].strip().lower()
+        for row in rows[1:]
+        if len(row) > name_index and row[name_index].strip()
+    }
+
+
+def write_research_row(headers: list[str], data: dict, name_field: str = "company_name"):
+    worksheet = get_sheet()
+    ensure_research_headers(headers)
+
+    existing_names = get_existing_entity_names(name_field)
+    entity_name = str(data.get(name_field, "") or "").strip()
+
+    if entity_name and entity_name.lower() in existing_names:
+        print(f"Skipping duplicate entity: {entity_name}")
+        return False
+
+    worksheet.append_row(build_dynamic_row(headers, data))
+    return True
+
