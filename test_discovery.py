@@ -1,6 +1,6 @@
 from tavily import TavilyClient
 from dotenv import load_dotenv
-from langchain_groq import ChatGroq
+from langchain_ollama import ChatOllama
 import json
 
 import os 
@@ -11,10 +11,9 @@ tavily = TavilyClient(
     api_key=os.getenv("TAVILY_API_KEY")
 )
 
-# Groq Model
-llm = ChatGroq(
-    model="llama-3.3-70b-versatile",
-    groq_api_key=os.getenv("GROQ_API_KEY"),
+# Ollama Model
+llm = ChatOllama(
+    model="qwen3:8b",
     temperature=0
 )
 
@@ -34,7 +33,7 @@ for result in response["results"]:
     combined_content += "\n\n"
 
 print("the content is collected form tavilly is ")
-print("sending to groq ... ")
+print("sending to ollama ... ")
 
 prompt = f"""
 You are a company extraction agent.
