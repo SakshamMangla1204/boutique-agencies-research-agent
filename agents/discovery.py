@@ -2,6 +2,7 @@ import json
 import os
 import re
 from pathlib import Path
+from typing import Optional
 
 from dotenv import load_dotenv
 from langchain_ollama import ChatOllama
@@ -87,7 +88,7 @@ def _extract_json_array(content: str, limit: int) -> list[str]:
     return unique_items
 
 
-def _load_used_queries() -> list[str]:
+def load_used_queries() -> list[str]:
     if not QUERY_MEMORY_FILE.exists():
         return []
 
@@ -102,7 +103,7 @@ def _load_used_queries() -> list[str]:
     return [query for query in data if isinstance(query, str) and query.strip()]
 
 
-def _save_used_queries(queries: list[str]) -> None:
+def save_used_queries(queries: list[str]) -> None:
     QUERY_MEMORY_FILE.parent.mkdir(parents=True, exist_ok=True)
     QUERY_MEMORY_FILE.write_text(json.dumps(queries, indent=2))
 
@@ -166,13 +167,39 @@ PREVIOUSLY USED QUERIES:
     return fresh_queries[:MAX_QUERY_COUNT]
 
 
-def _search_query(query: str) -> str:
-    response = tavily.search(
-        query=query,
-        max_results=MAX_RESULTS_PER_QUERY
-    )
+# Deterministic Tavily parameter variation across discovery batches.
+# Tavily has no offset/pagination parameter, so we vary supported search
+# options (search_depth, topic, country) to surface different results while
+# keeping the query text itself stable.  This is a small, bounded strategy.
+_SEARCH_DEPTHS = ["basic", "advanced"]
+_TOPICS = [None, "news", "finance"]
+_COUNTRIES = [None, "in", "us", "gb"]
+
+
+def _search_query(query: str, batch_number: int = 1) -> str:
+    # Deterministic variation derived from the batch number so repeated
+    # discovery batches do not execute the exact same Tavily call.
+    depth = _SEARCH_DEPTHS[(batch_number - 1) % len(_SEARCH_DEPTHS)]
+    topic = _TOPICS[(batch_number - 1) % len(_TOPICS)]
+    country = _COUNTRIES[(batch_number - 1) % len(_COUNTRIES)]
+
+    kwargs = {
+        "query": query,
+        "max_results": MAX_RESULTS_PER_QUERY,
+        "search_depth": depth,
+    }
+
+    if topic:
+        kwargs["topic"] = topic
+    if country:
+        kwargs["country"] = country
+
+    response = tavily.search(**kwargs)
 
     combined_content = f"\nSEARCH QUERY: {query}\n"
+    combined_content += f"SEARCH DEPTH: {depth}\n"
+    combined_content += f"TOPIC: {topic or 'general'}\n"
+    combined_content += f"COUNTRY: {country or 'default'}\n"
 
     for result in response["results"]:
         combined_content += f"""
@@ -266,6 +293,7 @@ def _run_discovery_batch(
     entity_type: str,
     used_queries: list[str],
     remaining: int,
+    batch_number: int = 1,
 ) -> tuple[list[str], list[str]]:
     search_queries = _collect_search_queries(query, used_queries)
 
@@ -280,7 +308,7 @@ def _run_discovery_batch(
 
     for search_query in search_queries:
         try:
-            combined_content += _search_query(search_query)
+            combined_content += _search_query(search_query, batch_number)
         except Exception:
             continue
 
@@ -302,6 +330,39 @@ def _run_discovery_batch(
     return entities, used_queries + search_queries
 
 
+def discover_entity_batch(
+    query: str,
+    entity_type: str = "company",
+    batch_size: int = 10,
+    batch_number: int = 1,
+    used_queries: Optional[list[str]] = None,
+) -> tuple[list[str], list[str]]:
+    """Run a single discovery batch and return (entities, updated_used_queries).
+
+    This is the building block for the controlled discovery/processing loop in
+    main.py.  Each call generates fresh search queries (avoiding previously
+    used ones) and varies Tavily parameters so repeated batches surface
+    different results.
+    """
+    if used_queries is None:
+        used_queries = load_used_queries()
+
+    print(f"\nDISCOVERY BATCH {batch_number}")
+    print(f"Requested batch size: {batch_size}")
+
+    entities, used_queries = _run_discovery_batch(
+        query,
+        entity_type,
+        used_queries,
+        batch_size,
+        batch_number,
+    )
+
+    save_used_queries(used_queries)
+
+    return entities, used_queries
+
+
 def discover_entities(
     query: str,
     entity_type: str = "company",
@@ -312,7 +373,7 @@ def discover_entities(
     print("Entity type:", entity_type)
     print("Max results:", max_results)
 
-    used_queries = _load_used_queries()
+    used_queries = load_used_queries()
     discovered: list[str] = []
     seen: set[str] = set()
 
@@ -329,6 +390,7 @@ def discover_entities(
             entity_type,
             used_queries,
             remaining,
+            batch_number,
         )
 
         new_entities = 0
@@ -346,7 +408,7 @@ def discover_entities(
             if len(discovered) >= max_results:
                 break
 
-        _save_used_queries(used_queries)
+        save_used_queries(used_queries)
 
         print(f"Batch entities found: {len(batch_entities)}")
         print(f"New unique entities this batch: {new_entities}")

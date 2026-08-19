@@ -1,3 +1,5 @@
+import re
+
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -19,6 +21,54 @@ HEADERS = [
     "lead_score",
     "status"
 ]
+
+# Tokens that are structural/legal descriptors and should not affect
+# entity-identity comparison (e.g. "Yellow.AI Inc." == "Yellow AI").
+SUFFIX_TOKENS = {
+    "inc", "llc", "ltd", "limited", "pvt", "private", "corp",
+    "corporation", "co", "company", "llp", "plc", "group",
+    "technologies", "technology", "systems", "solutions", "labs",
+    "ventures", "holdings",
+}
+
+_URL_RE = re.compile(r"^https?://", re.IGNORECASE)
+_SLUG_RE = re.compile(r"[-_/]+")
+_NON_ALNUM_RE = re.compile(r"[^a-z0-9\s]")
+
+
+def normalize_entity_name(name) -> str:
+    """Deterministic entity-name normalization for deduplication.
+
+    Handles case, whitespace, punctuation and common structural suffixes so
+    that e.g. "Yellow.ai", "yellow ai" and "Yellow AI " all normalize to the
+    same key.  Pure Python - no LLM involved.
+    """
+    if not name:
+        return ""
+
+    text = str(name).strip()
+
+    if not text:
+        return ""
+
+    # If the value is a URL (e.g. a LinkedIn/company slug), use the last
+    # meaningful path segment instead of the whole URL.
+    if _URL_RE.match(text):
+        path = text.split("?", 1)[0].rstrip("/")
+        segment = path.rsplit("/", 1)[-1]
+
+        if segment:
+            text = _SLUG_RE.sub(" ", segment)
+
+    text = text.lower().strip()
+    text = _NON_ALNUM_RE.sub(" ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+
+    tokens = [token for token in text.split() if token not in SUFFIX_TOKENS]
+
+    # Compact removes the difference between "yellow ai", "yellow.ai",
+    # "yellowai" and "Yellow AI ".
+    return "".join(tokens)
 
 creds = Credentials.from_service_account_file(
     "credentials.json",
@@ -73,7 +123,7 @@ def enqueue_companies(companies):
 
     existing_rows = worksheet.get_all_values()[1:]
     existing_names = {
-        row[0].strip().lower()
+        normalize_entity_name(row[0])
         for row in existing_rows
         if row and row[0].strip()
     }
@@ -83,10 +133,10 @@ def enqueue_companies(companies):
     for company in companies:
         name = company.strip()
 
-        if not name or name.lower() in existing_names:
+        if not name or normalize_entity_name(name) in existing_names:
             continue
 
-        existing_names.add(name.lower())
+        existing_names.add(normalize_entity_name(name))
         new_rows.append(build_row({
             "company_name": name,
             "status": "NEW"
@@ -145,6 +195,7 @@ def build_dynamic_row(headers: list[str], data: dict):
 
 
 def get_existing_entity_names(name_field: str = "company_name") -> set[str]:
+    """Return normalized known entity names already stored in the sheet."""
     worksheet = get_sheet()
     rows = worksheet.get_all_values()
 
@@ -155,20 +206,25 @@ def get_existing_entity_names(name_field: str = "company_name") -> set[str]:
     name_index = _column_index(headers, name_field)
 
     return {
-        row[name_index].strip().lower()
+        normalize_entity_name(row[name_index])
         for row in rows[1:]
         if len(row) > name_index and row[name_index].strip()
     }
 
 
 def write_research_row(headers: list[str], data: dict, name_field: str = "company_name"):
+    """Append a row, skipping it if the entity is already known.
+
+    This is the Level-2 duplicate protection: it runs again right before
+    writing even though entities are normally filtered before research.
+    """
     worksheet = get_sheet()
     ensure_research_headers(headers)
 
     existing_names = get_existing_entity_names(name_field)
     entity_name = str(data.get(name_field, "") or "").strip()
 
-    if entity_name and entity_name.lower() in existing_names:
+    if entity_name and normalize_entity_name(entity_name) in existing_names:
         print(f"Skipping duplicate entity: {entity_name}")
         return False
 
