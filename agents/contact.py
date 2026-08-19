@@ -2,9 +2,9 @@ import json
 import os
 
 from dotenv import load_dotenv
-from langchain_ollama import ChatOllama
 from tavily import TavilyClient
 
+from services.llm import get_llm
 from state.research_state import ResearchState
 
 load_dotenv()
@@ -13,10 +13,7 @@ tavily = TavilyClient(
     api_key=os.getenv("TAVILY_API_KEY")
 )
 
-llm = ChatOllama(
-    model="qwen3:8b",
-    temperature=0
-)
+llm = get_llm("contact")
 
 
 def _parse_contact_json(content: str) -> dict:

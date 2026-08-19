@@ -1,9 +1,10 @@
 from tavily import TavilyClient
 from dotenv import load_dotenv
-from langchain_ollama import ChatOllama
 import json
 
 import os 
+
+from services.llm import get_llm
 
 load_dotenv()
 
@@ -11,11 +12,8 @@ tavily = TavilyClient(
     api_key=os.getenv("TAVILY_API_KEY")
 )
 
-# Ollama Model
-llm = ChatOllama(
-    model="qwen3:8b",
-    temperature=0
-)
+# Discovery model (Mistral)
+llm = get_llm("discovery")
 
 query="Ai Startups in India "
 
@@ -32,8 +30,8 @@ for result in response["results"]:
     combined_content += result.get("content", "")
     combined_content += "\n\n"
 
-print("the content is collected form tavilly is ")
-print("sending to ollama ... ")
+print("the content is collected form tavily is ")
+print("sending to LLM ... ")
 
 prompt = f"""
 You are a company extraction agent.

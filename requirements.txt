@@ -1,6 +1,7 @@
 langgraph==0.6.11
 tavily-python==0.7.26
 python-dotenv==1.2.1
-langchain-ollama==0.3.10
+langchain-groq==0.3.8
+langchain-mistralai==0.2.12
 gspread==6.2.1
 google-auth==2.49.0

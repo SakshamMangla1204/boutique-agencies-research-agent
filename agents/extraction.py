@@ -3,14 +3,12 @@ import os
 import re
 
 from dotenv import load_dotenv
-from langchain_ollama import ChatOllama
+
+from services.llm import get_llm
 
 load_dotenv()
 
-llm = ChatOllama(
-    model="qwen3:8b",
-    temperature=0
-)
+llm = get_llm("extraction")
 
 MAX_EXTRACTION_CONTENT = 12000
 

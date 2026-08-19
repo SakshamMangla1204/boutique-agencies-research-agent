@@ -1,9 +1,9 @@
 from tavily import TavilyClient
 from dotenv import load_dotenv
-from langchain_ollama import ChatOllama
 
 import os
 
+from services.llm import get_llm
 from state.research_state import ResearchState
 
 load_dotenv()
@@ -12,10 +12,7 @@ tavily = TavilyClient(
     api_key=os.getenv("TAVILY_API_KEY")
 )
 
-llm = ChatOllama(
-    model="qwen3:8b",
-    temperature=0
-)
+llm = get_llm("research")
 
 BASIC_FIELDS = {"company_name", "website", "linkedin", "description"}
 CONTACT_FIELDS = {
@@ -122,7 +119,7 @@ CONTENT:
 """
 
     print("Search completed.")
-    print("Sending information to Ollama...\n")
+    print("Sending information to LLM...\n")
 
     prompt = f"""
 You are a company research agent.

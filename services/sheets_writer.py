@@ -1,4 +1,5 @@
 import re
+import time
 
 import gspread
 from google.oauth2.service_account import Credentials
@@ -69,6 +70,7 @@ def normalize_entity_name(name) -> str:
     # Compact removes the difference between "yellow ai", "yellow.ai",
     # "yellowai" and "Yellow AI ".
     return "".join(tokens)
+
 
 creds = Credentials.from_service_account_file(
     "credentials.json",
@@ -212,6 +214,23 @@ def get_existing_entity_names(name_field: str = "company_name") -> set[str]:
     }
 
 
+def _with_retry(func, *args, retries: int = 3, delay: float = 2.0, **kwargs):
+    """Retry a Google Sheets operation on transient connection errors."""
+    last_exc = None
+
+    for attempt in range(1, retries + 1):
+        try:
+            return func(*args, **kwargs)
+        except Exception as exc:
+            last_exc = exc
+            print(f"  Sheet operation failed (attempt {attempt}/{retries}): {exc}")
+
+            if attempt < retries:
+                time.sleep(delay * attempt)
+
+    raise last_exc
+
+
 def write_research_row(headers: list[str], data: dict, name_field: str = "company_name"):
     """Append a row, skipping it if the entity is already known.
 
@@ -228,6 +247,5 @@ def write_research_row(headers: list[str], data: dict, name_field: str = "compan
         print(f"Skipping duplicate entity: {entity_name}")
         return False
 
-    worksheet.append_row(build_dynamic_row(headers, data))
+    _with_retry(worksheet.append_row, build_dynamic_row(headers, data))
     return True
-

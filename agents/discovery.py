@@ -5,8 +5,9 @@ from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
-from langchain_ollama import ChatOllama
 from tavily import TavilyClient
+
+from services.llm import get_llm
 
 load_dotenv()
 
@@ -20,10 +21,7 @@ tavily = TavilyClient(
     api_key=os.getenv("TAVILY_API_KEY")
 )
 
-llm = ChatOllama(
-    model="qwen3:8b",
-    temperature=0
-)
+llm = get_llm("discovery")
 
 
 def _truncate_content(content: str, limit: int = MAX_EXTRACTION_CONTENT) -> str:
@@ -141,6 +139,7 @@ Rules:
 - Queries must be focused on finding companies, startups, hiring companies, funding lists, accelerators, and industry roundups.
 - Do not repeat any previously used query.
 - Keep every query short and practical for a web search engine.
+- Prefer broad queries over narrow ones.  A query like "{base_query}" is better than a very specific niche query.
 
 BASE QUERY:
 {base_query}
@@ -311,6 +310,20 @@ def _run_discovery_batch(
             combined_content += _search_query(search_query, batch_number)
         except Exception:
             continue
+
+    # If the generated queries produced no Tavily results, fall back to the
+    # base query itself (which is known to surface relevant content).
+    if not combined_content.strip():
+        base_key = query.strip().lower()
+        used_keys = {used.strip().lower() for used in used_queries}
+
+        if base_key not in used_keys:
+            print(f"\nGenerated queries returned no results. Falling back to base query: {query}")
+            try:
+                combined_content = _search_query(query, batch_number)
+                search_queries = [query]
+            except Exception:
+                combined_content = ""
 
     if not combined_content.strip():
         print("\nNo Tavily results collected in this batch.")
