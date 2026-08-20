@@ -6,4 +6,5 @@ __pycache__/
 node_modules/
 dist/
 .venv/
+venv/
 state/discovery_queries.json

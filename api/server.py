@@ -3,6 +3,7 @@
 All API keys and Google credentials remain server-side. The browser only
 receives job state summaries and the spreadsheet navigation URL.
 """
+import os
 import threading
 import time
 import uuid
@@ -17,10 +18,17 @@ from services.sheets_writer import get_sheet
 
 app = FastAPI(title="ResearchOS API", version="1.0.0")
 
+# Local development origins are always allowed. The deployed Vercel frontend
+# origin is provided via the FRONTEND_URL environment variable (set on Render).
 ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
+
+_frontend_url = os.getenv("FRONTEND_URL", "").strip()
+
+if _frontend_url:
+    ALLOWED_ORIGINS.append(_frontend_url)
 
 app.add_middleware(
     CORSMiddleware,

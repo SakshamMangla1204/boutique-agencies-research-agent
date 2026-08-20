@@ -1,0 +1,24 @@
+# Render Web Service configuration for the ResearchOS backend.
+# Secrets are NOT stored here — set them in the Render dashboard.
+
+services:
+  - type: web
+    name: researchos-backend
+    runtime: python
+    plan: free
+    region: singapore
+    rootDir: .
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn api.server:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: MISTRAL_API_KEY
+        sync: false
+      - key: GOOGLE_CREDENTIALS_JSON
+        sync: false
+      - key: FRONTEND_URL
+        sync: false

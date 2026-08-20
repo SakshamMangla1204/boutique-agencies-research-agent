@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+// API base URL. In production (Vercel) this is set via VITE_API_URL to point
+// at the Render backend. In local development it falls back to the Vite proxy
+// (relative /api -> http://localhost:8000).
+const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '')
+
 const DEFAULT_FIELDS = ['company_name', 'website', 'linkedin', 'description']
 const ENTITY_TYPES = ['company', 'college', 'vc_firm', 'startup', 'job', 'custom']
 const STAGES = ['discovery', 'research', 'extraction', 'sheets']
@@ -115,7 +120,7 @@ export default function App() {
 
   const checkBackend = useCallback(async () => {
     try {
-      const res = await fetch('/api/health')
+      const res = await fetch(`${API_BASE}/api/health`)
       setBackendOnline(res.ok)
     } catch {
       setBackendOnline(false)
@@ -140,7 +145,7 @@ export default function App() {
 
     const poll = async () => {
       try {
-        const res = await fetch(`/api/research/${jobId}`)
+        const res = await fetch(`${API_BASE}/api/research/${jobId}`)
         if (!res.ok) return
         const data = await res.json()
         setJob(data)
@@ -183,7 +188,7 @@ export default function App() {
     }
 
     try {
-      const res = await fetch('/api/research', {
+      const res = await fetch(`${API_BASE}/api/research`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

@@ -1,8 +1,13 @@
+import json
+import os
 import re
 import time
 
 import gspread
 from google.oauth2.service_account import Credentials
+from dotenv import load_dotenv
+
+load_dotenv()
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -72,10 +77,29 @@ def normalize_entity_name(name) -> str:
     return "".join(tokens)
 
 
-creds = Credentials.from_service_account_file(
-    "credentials.json",
-    scopes=SCOPES
-)
+def _load_credentials():
+    """Load Google service-account credentials.
+
+    Supports two mechanisms:
+    1. Local file: `credentials.json` (development)
+    2. Environment variable: `GOOGLE_CREDENTIALS_JSON` containing the
+       full service-account JSON (production / Render)
+    """
+    env_creds = os.getenv("GOOGLE_CREDENTIALS_JSON", "").strip()
+
+    if env_creds:
+        return Credentials.from_service_account_info(
+            json.loads(env_creds),
+            scopes=SCOPES,
+        )
+
+    return Credentials.from_service_account_file(
+        "credentials.json",
+        scopes=SCOPES,
+    )
+
+
+creds = _load_credentials()
 
 client = gspread.authorize(creds)
 sheet = None
