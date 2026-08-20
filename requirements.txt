@@ -5,3 +5,5 @@ langchain-groq==0.3.8
 langchain-mistralai==0.2.12
 gspread==6.2.1
 google-auth==2.49.0
+fastapi==0.141.1
+uvicorn==0.52.4

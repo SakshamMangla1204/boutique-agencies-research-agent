@@ -63,9 +63,20 @@ def _job_summary(job: dict) -> dict:
         "sheet_url": job.get("sheet_url"),
         "entities": job.get("entities", []),
         "failed_entities": job.get("failed_entities", []),
+        "logs": job.get("logs", []),
         "created_at": job.get("created_at"),
         "updated_at": job.get("updated_at"),
     }
+
+
+def _append_log(job: dict, stage: str, message: str) -> None:
+    """Append a timestamped log entry to the job's log stream."""
+    logs = job.setdefault("logs", [])
+    logs.append({
+        "ts": time.time(),
+        "stage": stage,
+        "message": message,
+    })
 
 
 def _make_callback(job_id: str):
@@ -78,25 +89,57 @@ def _make_callback(job_id: str):
             if stage == "startup":
                 job["stage"] = "sheets"
                 job["known_entities"] = data.get("known_entities", 0)
+                _append_log(
+                    job,
+                    "sheets",
+                    f"Loaded {data.get('known_entities', 0)} existing entities from Google Sheets",
+                )
 
             elif stage == "discovery_start":
                 job["stage"] = "discovery"
+                _append_log(
+                    job,
+                    "discovery",
+                    f"Discovery batch {data.get('batch', '?')} started",
+                )
 
             elif stage == "discovery":
                 job["discovered"] = data.get("found", job.get("discovered", 0))
+                _append_log(
+                    job,
+                    "discovery",
+                    f"Discovered {data.get('found', 0)} entities in batch {data.get('batch', '?')}",
+                )
 
             elif stage == "discovery_filter":
                 job["duplicates"] = job.get("duplicates", 0) + data.get(
                     "existing", 0
                 )
+                _append_log(
+                    job,
+                    "dedup",
+                    f"{data.get('new', 0)} new entities after filtering "
+                    f"({data.get('existing', 0)} already known)",
+                )
 
             elif stage == "entity_start":
                 job["stage"] = "research"
                 job["current_entity"] = data.get("entity")
+                _append_log(
+                    job,
+                    "research",
+                    f"Processing: {data.get('entity', '?')} "
+                    f"({data.get('index', '?')}/{data.get('total', '?')})",
+                )
 
             elif stage == "entity_processed":
                 job["stage"] = "extraction"
                 job["processed"] = job.get("processed", 0) + 1
+                _append_log(
+                    job,
+                    "extraction",
+                    f"Extracting requested fields for {data.get('entity', '?')}",
+                )
 
             elif stage == "entity_written":
                 job["stage"] = "sheets"
@@ -104,10 +147,20 @@ def _make_callback(job_id: str):
                 entities = job.get("entities", [])
                 entities.append(data.get("entity"))
                 job["entities"] = entities
+                _append_log(
+                    job,
+                    "sheets",
+                    f"Row written successfully for {data.get('entity', '?')}",
+                )
 
             elif stage == "entity_duplicate":
                 job["stage"] = "sheets"
                 job["duplicates"] = job.get("duplicates", 0) + 1
+                _append_log(
+                    job,
+                    "sheets",
+                    f"Skipped duplicate: {data.get('entity', '?')}",
+                )
 
             elif stage == "entity_failed":
                 job["failed"] = job.get("failed", 0) + 1
@@ -116,6 +169,11 @@ def _make_callback(job_id: str):
                     {"entity": data.get("entity"), "reason": data.get("reason")}
                 )
                 job["failed_entities"] = failed_entities
+                _append_log(
+                    job,
+                    "error",
+                    f"Failed {data.get('entity', '?')}: {data.get('reason', 'unknown error')}",
+                )
 
             elif stage == "complete":
                 job["status"] = "complete"
@@ -137,17 +195,33 @@ def _make_callback(job_id: str):
                     job["sheet_url"] = get_sheet().url
                 except Exception:
                     job["sheet_url"] = None
+                _append_log(
+                    job,
+                    "complete",
+                    f"Pipeline complete — {data.get('written', 0)} rows written, "
+                    f"{data.get('failed', 0)} failed",
+                )
 
             elif stage == "pipeline_failed":
                 job["status"] = "failed"
                 job["stage"] = "failed"
                 job["stop_reason"] = data.get("stop_reason")
                 job["error"] = data.get("error")
+                _append_log(
+                    job,
+                    "error",
+                    f"Pipeline failed: {data.get('error', 'unknown error')}",
+                )
 
             elif stage == "startup_failed":
                 job["status"] = "failed"
                 job["stage"] = "failed"
                 job["error"] = data.get("error")
+                _append_log(
+                    job,
+                    "error",
+                    f"Startup failed: {data.get('error', 'unknown error')}",
+                )
 
             job["updated_at"] = time.time()
 
@@ -170,6 +244,7 @@ def _run_job(job_id: str, request: ResearchRequest):
             job["status"] = "failed"
             job["stage"] = "failed"
             job["error"] = str(exc)
+            _append_log(job, "error", f"Unexpected error: {exc}")
             job["updated_at"] = time.time()
 
 
@@ -209,9 +284,11 @@ def start_research(request: ResearchRequest):
             "entities": [],
             "failed_entities": [],
             "current_entity": None,
+            "logs": [],
             "created_at": time.time(),
             "updated_at": time.time(),
         }
+        _append_log(JOBS[job_id], "start", f"JOB STARTED — Query: {request.query}")
 
     thread = threading.Thread(
         target=_run_job,

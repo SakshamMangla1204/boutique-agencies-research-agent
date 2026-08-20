@@ -11,6 +11,24 @@ const FIELD_LABELS = {
   description: 'Description',
 }
 
+const STAGE_COLORS = {
+  start: 'var(--accent)',
+  sheets: 'var(--green)',
+  discovery: 'var(--yellow)',
+  dedup: 'var(--accent-hover)',
+  research: 'var(--yellow)',
+  extraction: 'var(--accent-hover)',
+  complete: 'var(--green)',
+  error: 'var(--red)',
+}
+
+function formatTime(ts) {
+  if (!ts) return ''
+  const d = new Date(ts * 1000)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
 function stageStatus(job, stage) {
   if (job.status === 'failed') return 'failed'
   if (job.status === 'complete') return 'complete'
@@ -30,6 +48,54 @@ function formatError(err) {
   if (typeof err === 'string') return err
   if (err.detail) return err.detail
   return 'Request failed'
+}
+
+function LiveConsole({ logs, running }) {
+  const endRef = useRef(null)
+
+  useEffect(() => {
+    if (endRef.current) {
+      endRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    }
+  }, [logs])
+
+  return (
+    <div className="console">
+      <div className="console-header">
+        <span className="console-title">Researching</span>
+        <span className={`console-live ${running ? 'active' : ''}`}>
+          <span className="console-live-dot" />
+          {running ? 'Live' : 'Finished'}
+        </span>
+      </div>
+      <div className="console-body">
+        {logs && logs.length > 0 ? (
+          logs.map((log, i) => (
+            <div className="console-line" key={i}>
+              <span className="console-time">{formatTime(log.ts)}</span>
+              <span
+                className="console-stage"
+                style={{ color: STAGE_COLORS[log.stage] || 'var(--text-secondary)' }}
+              >
+                {log.stage.toUpperCase()}
+              </span>
+              <span className="console-msg">{log.message}</span>
+            </div>
+          ))
+        ) : (
+          <div className="console-line">
+            <span className="console-msg">Waiting for backend…</span>
+          </div>
+        )}
+        {running ? (
+          <div className="console-line console-pulse">
+            <span className="console-msg">● Pipeline running...</span>
+          </div>
+        ) : null}
+        <div ref={endRef} />
+      </div>
+    </div>
+  )
 }
 
 export default function App() {
@@ -361,6 +427,8 @@ export default function App() {
                 <div className="stat-label">Failed</div>
               </div>
             </div>
+
+            <LiveConsole logs={job.logs || []} running />
           </section>
         ) : null}
 
@@ -425,6 +493,8 @@ export default function App() {
               </div>
             ) : null}
 
+            <LiveConsole logs={job.logs || []} running={false} />
+
             <div className="result-actions">
               {job.sheet_url ? (
                 <a
@@ -458,6 +528,8 @@ export default function App() {
             </div>
 
             {job.error ? <div className="error-box">{job.error}</div> : null}
+
+            <LiveConsole logs={job.logs || []} running={false} />
 
             <div className="result-actions">
               <button className="btn btn-secondary" onClick={handleReset}>
