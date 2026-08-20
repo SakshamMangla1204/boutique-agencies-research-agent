@@ -25,13 +25,13 @@ This turns ad-hoc research into a repeatable pipeline.
 User Query
 ↓
 Discovery Agent
-    Tavily + Groq
+    Tavily + Mistral
 ↓
 Companies List
 ↓
 For each company
     Research Agent
-        Tavily + Ollama (Qwen3:8B)
+        Tavily + Groq
     Contact Agent
         Tavily + Groq
 ↓
@@ -72,14 +72,14 @@ Responsibilities:
 
 - take a query string
 - search Tavily for relevant web results
-- send the combined search content to Groq
+- send the combined search content to Mistral
 - extract a clean JSON array of company names
 - return up to 10 companies
 
 Current model:
 
-- `ChatGroq`
-- model: `llama-3.3-70b-versatile`
+- `ChatMistralAI`
+- model: `mistral-large-latest`
 
 ### 2. Research Agent
 
@@ -100,8 +100,8 @@ Fields filled:
 
 Current model:
 
-- `ChatOllama`
-- model: `qwen3:8b`
+- `ChatGroq`
+- model: `openai/gpt-oss-120b`
 
 ### 3. Contact Agent
 
@@ -122,7 +122,7 @@ Fields filled:
 Current model:
 
 - `ChatGroq`
-- model: `llama-3.3-70b-versatile`
+- model: `openai/gpt-oss-120b`
 
 Status logic:
 
@@ -189,23 +189,42 @@ Each row currently includes:
 │   ├── contact.py
 │   ├── discovery.py
 │   ├── enrichment.py
+│   ├── extraction.py
 │   ├── memory.py
 │   ├── qc.py
 │   ├── research.py
 │   ├── scoring.py
 │   └── verification.py
+├── api/
+│   └── server.py
+├── frontend/
+│   ├── src/
+│   │   ├── App.jsx
+│   │   ├── index.css
+│   │   └── main.jsx
+│   ├── index.html
+│   ├── package.json
+│   ├── vercel.json
+│   └── vite.config.js
 ├── graph/
 │   ├── discovery_graph.py
 │   └── research_graph.py
 ├── services/
+│   ├── llm.py
 │   └── sheets_writer.py
 ├── state/
 │   ├── discovery_state.py
+│   ├── research_config.py
 │   └── research_state.py
 ├── main.py
+├── worker.py
+├── render.yaml
+├── requirements.txt
 ├── test_contact.py
 ├── test_discovery.py
-├── test_ollama.py
+├── test_extraction.py
+├── test_groq.py
+├── test_mistral.py
 ├── test_research.py
 ├── test_sheet.py
 └── test_tavily.py
@@ -222,20 +241,23 @@ source venv/bin/activate
 
 ### 2. Install dependencies
 
-Because `requirements.txt` is currently empty, install the libraries used by the project directly:
-
 ```bash
-pip install langgraph tavily-python python-dotenv langchain-groq langchain-ollama gspread google-auth
+pip install -r requirements.txt
 ```
 
 ### 3. Create `.env`
 
-Example:
+Copy `.env.example` to `.env` and fill in your keys:
 
-```env
-TAVILY_API_KEY=your_tavily_key
-GROQ_API_KEY=your_groq_key
+```bash
+cp .env.example .env
 ```
+
+Required keys:
+
+- `TAVILY_API_KEY`
+- `GROQ_API_KEY`
+- `MISTRAL_API_KEY`
 
 ### 4. Add Google Sheets credentials
 
@@ -243,15 +265,6 @@ Place your Google service account JSON file in the project root as:
 
 ```text
 credentials.json
-```
-
-### 5. Make sure Ollama is running locally
-
-You need Ollama available for the Research Agent:
-
-```bash
-ollama serve
-ollama pull qwen3:8b
 ```
 
 ## How To Run
@@ -262,13 +275,18 @@ Run the full pipeline:
 python3 main.py
 ```
 
-Expected flow:
+Run the API server:
 
-1. discovery runs for the query
-2. company count is printed
-3. each company is processed through the research graph
-4. each final result is appended to Google Sheets
-5. final results are printed in the terminal
+```bash
+python3 api/server.py
+```
+
+Run the frontend (from the `frontend/` directory):
+
+```bash
+npm install
+npm run dev
+```
 
 ## Test Scripts
 
@@ -277,9 +295,11 @@ The repo includes small manual test files:
 - [test_discovery.py](./test_discovery.py)
 - [test_research.py](./test_research.py)
 - [test_contact.py](./test_contact.py)
+- [test_extraction.py](./test_extraction.py)
+- [test_groq.py](./test_groq.py)
+- [test_mistral.py](./test_mistral.py)
 - [test_tavily.py](./test_tavily.py)
 - [test_sheet.py](./test_sheet.py)
-- [test_ollama.py](./test_ollama.py)
 
 These are simple runnable scripts for checking individual parts of the system.
 
@@ -289,19 +309,16 @@ These are simple runnable scripts for checking individual parts of the system.
 - query-to-sheet automation
 - practical use of Tavily for web search
 - LangGraph orchestration for multi-step research
-- mixed-model architecture to balance cost and capability
+- cloud-based LLM architecture (Groq + Mistral) — no local model required
 
 ## Current Limitations
 
-- `requirements.txt` is not yet maintained
 - some files in the repo are placeholders or not part of the active runtime
-- model/provider usage is mixed by design and depends on both cloud and local services
 - discovery and contact quality still depend heavily on search result quality
 - the Google Sheet schema still includes some fields that the current pipeline does not fully use
 
 ## Future Improvements
 
-- maintain a proper `requirements.txt`
 - add better parsing validation for model outputs
 - add structured logging
 - improve contact extraction accuracy
@@ -316,8 +333,8 @@ This project is an agentic company research pipeline for opportunity discovery.
 It combines:
 
 - Tavily for web search
-- Groq for high-quality company discovery and contact extraction
-- Ollama/Qwen3:8B for local company research
+- Groq for high-quality company research and contact extraction
+- Mistral for company discovery
 - LangGraph for orchestration
 - Google Sheets for persistent storage
 
