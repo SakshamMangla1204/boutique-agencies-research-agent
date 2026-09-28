@@ -7,3 +7,5 @@ gspread==6.2.1
 google-auth==2.49.0
 fastapi==0.141.1
 uvicorn==0.52.4
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10
